@@ -1,0 +1,87 @@
+config {
+  type: "incremental",
+  schema: "df_dm",
+  description: "Daily prices of securities. One row per exchange, security and trade day. A periodic snapshot fact: the site takes the price and the split factor from here and computes the value of a portfolio from its own lots.",
+  tags: ["marts"],
+  uniqueKey: ["price_key"],
+  bigquery: {
+    partitionBy: "trade_date",
+    clusterBy: ["exchange", "sec_id"],
+    // The merge may only touch the partitions of the window. Without it
+    // BigQuery scans the whole table on every run to find the target
+    // rows. This is the incremental_predicates of the dbt model.
+    updatePartitionFilter: "trade_date >= window_start"
+  },
+  assertions: {
+    uniqueKey: ["price_key"],
+    nonNull: ["price_key", "exchange", "sec_id", "trade_date", "currency", "split_cum_factor", "extracted_at", "updated_at"],
+    rowConditions: [
+      "exchange = 'MOEX'",
+      "currency = 'RUB'",
+      "split_cum_factor > 0"
+    ]
+  },
+  columns: {
+    price_key: "Surrogate key: exchange, sec_id and trade_date, joined with a pipe.",
+    exchange: "Exchange code, part of the key. Only MOEX today.",
+    trade_date: "Trade day, taken from the Cloud Storage path and not from the file. Partition column.",
+    sec_id: "Security ticker, local to its exchange.",
+    board: "Board on the exchange, TQBR today. An attribute, not part of the key.",
+    currency: "ISO code of the price currency. MOEX gives SUR for roubles, it is mapped to RUB here.",
+    close_price: "Official close price as the exchange defines it. Null when the exchange gave no price, about 2 percent of rows.",
+    split_cum_factor: "Product of split_after / split_before over all splits of the security not later than trade_date. Equals 1 before the first split.",
+    extracted_at: "When the extract script wrote the source file to Cloud Storage.",
+    updated_at: "When this run wrote the row. The whole window is rewritten every night, so it says when the row was touched, not when it changed."
+  }
+}
+
+pre_operations {
+  -- The window of the reload, computed by BigQuery at run time. A full
+  -- build takes the whole history; an incremental run takes the last
+  -- days, so that a late file or a late split still lands in the fact.
+  declare window_start default (
+    ${when(incremental(), windowStart(self(), 6), "select date '1900-01-01'")}
+  )
+}
+
+with hist as (
+	select
+		'MOEX' exchange
+		, dt trade_date
+		, sec_id
+		, board
+		, case currency_id when 'SUR' then 'RUB' else currency_id end currency
+		, legal_close_price close_price
+		, extracted_at
+	from ${ref("stg_moex_history")}
+	${when(incremental(), `where dt >= window_start`)}
+), splits as (
+	select
+		hist.trade_date
+		, hist.sec_id
+		, ${splitCumFactor("s.split_after", "s.split_before")} split_cum_factor
+	from
+		${ref("stg_moex_splits")} s
+		join hist
+			on hist.sec_id = s.sec_id
+			and hist.trade_date >= s.trade_date
+	group by
+		hist.trade_date
+		, hist.sec_id
+)
+select
+	concat(hist.exchange, '|', hist.sec_id, '|', cast(hist.trade_date as string)) price_key
+	, hist.exchange
+	, hist.trade_date
+	, hist.sec_id
+	, hist.board
+	, hist.currency
+	, hist.close_price
+	, coalesce(splits.split_cum_factor, 1) split_cum_factor
+	, hist.extracted_at
+	, current_timestamp() updated_at
+from
+	hist
+	left join splits
+		on splits.trade_date = hist.trade_date
+		and splits.sec_id = hist.sec_id

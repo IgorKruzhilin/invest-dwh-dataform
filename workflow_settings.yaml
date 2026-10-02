@@ -14,7 +14,8 @@ defaultDataset: df_dm
 defaultAssertionDataset: df_assertions
 
 vars:
-  # Start of the reload window of the incremental fact. The scheduled run
-  # overrides it in the release configuration; the default is wide enough
-  # for a first build by hand.
-  windowStart: "1900-01-01"
+  # Start of the reload window of the incremental fact. Empty means that
+  # the window is computed by BigQuery at run time, from the last trade
+  # date already in the table. A release configuration or a backfill sets
+  # a date here to reload a chosen interval.
+  windowStart: ""
