@@ -1,0 +1,20 @@
+# Settings of the whole workflow. This is the dbt_project.yml of Dataform.
+#
+# The project and the location must match the BigQuery side: the datasets
+# of this project live in the US multi region, and a job cannot read a
+# dataset from another location.
+dataformCoreVersion: 3.0.0
+defaultProject: project-6feb8749-c55b-4db3-af0
+defaultLocation: US
+
+# Dataform writes here when a file does not say otherwise. The name starts
+# with df_ on purpose: the datasets stg and dm belong to the dbt project
+# in the main repository, and two tools must never write the same table.
+defaultDataset: df_dm
+defaultAssertionDataset: df_assertions
+
+vars:
+  # Start of the reload window of the incremental fact. The scheduled run
+  # overrides it in the release configuration; the default is wide enough
+  # for a first build by hand.
+  windowStart: "1900-01-01"

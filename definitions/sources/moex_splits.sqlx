@@ -1,0 +1,7 @@
+config {
+  type: "declaration",
+  database: "project-6feb8749-c55b-4db3-af0",
+  schema: "raw",
+  name: "moex_splits",
+  description: "MOEX splits, one row per security and split date. An external table over one Parquet object, rewritten in full on every load."
+}

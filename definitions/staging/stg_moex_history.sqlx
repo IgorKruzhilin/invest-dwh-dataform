@@ -1,0 +1,54 @@
+config {
+  type: "view",
+  schema: "df_stg",
+  description: "MOEX daily trade history. One row per trade day, board and security. Names and types only, no business logic.",
+  tags: ["staging"],
+  assertions: {
+    uniqueKey: ["history_key"],
+    nonNull: ["history_key", "board", "dt", "sec_id"]
+  },
+  columns: {
+    history_key: "Surrogate key: dt, board and sec_id.",
+    market: "Market code taken from the Cloud Storage path, for example shares.",
+    board: "Board code taken from the path, for example TQBR.",
+    dt: "Trade date taken from the path.",
+    sec_id: "Security ticker on the board.",
+    board_id: "Board code taken from the file. It must be equal to board, which comes from the path.",
+    trade_date: "Trade date taken from the file. It must be equal to dt, which comes from the path.",
+    close_price: "Price of the last trade of the day.",
+    legal_close_price: "Closing price the exchange publishes. It is not the last trade, and before a split it is the only price that keeps a value.",
+    extracted_at: "When the extract script wrote the file to Cloud Storage."
+  }
+}
+
+select
+	concat(cast(dt as string), '|', board, '|', secid) history_key
+	, market
+	, board
+	, dt
+	, secid sec_id
+	, boardid board_id
+	, tradedate trade_date
+	, trade_session_date
+	, tradingsession trading_session
+	, shortname short_name
+	, currencyid currency_id
+	, open open_price
+	, high high_price
+	, low low_price
+	, close close_price
+	, legalcloseprice legal_close_price
+	, waprice wa_price
+	, marketprice2 market_price_2
+	, marketprice3 market_price_3
+	, admittedquote admitted_quote
+	, trendclspr trend_close_price
+	, cast(numtrades as int64) num_trades
+	, cast(volume as int64) volume
+	, value trade_value
+	, mp2valtrd mp2_value_traded
+	, marketprice3tradesvalue market_price_3_value
+	, admittedvalue admitted_value
+	, waval avg_turnover_3m
+	, _extracted_at extracted_at
+from ${ref("moex_history")}

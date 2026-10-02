@@ -1,0 +1,7 @@
+config {
+  type: "declaration",
+  database: "project-6feb8749-c55b-4db3-af0",
+  schema: "raw",
+  name: "moex_history",
+  description: "MOEX daily trade history, one row per security and trade day. An external table over one Parquet object per trade day in Cloud Storage. The extract scripts and the table itself live in the main repository."
+}
