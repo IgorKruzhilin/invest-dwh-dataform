@@ -40,7 +40,7 @@ pre_operations {
   -- build takes the whole history; an incremental run takes the last
   -- days, so that a late file or a late split still lands in the fact.
   declare window_start default (
-    ${when(incremental(), windowStart(self(), 6), "select date '1900-01-01'")}
+    ${when(incremental(), window.windowStart(self(), 6), "select date '1900-01-01'")}
   )
 }
 
@@ -59,7 +59,7 @@ with hist as (
 	select
 		hist.trade_date
 		, hist.sec_id
-		, ${splitCumFactor("s.split_after", "s.split_before")} split_cum_factor
+		, ${splits.splitCumFactor("s.split_after", "s.split_before")} split_cum_factor
 	from
 		${ref("stg_moex_splits")} s
 		join hist
