@@ -1,0 +1,37 @@
+config {
+  type: "view",
+  schema: "df_stg",
+  description: "MOEX splits. One row per security and split date. The source gives the whole table on every load, 56 rows today.",
+  tags: ["staging"],
+  assertions: {
+    uniqueKey: ["split_key"],
+    nonNull: ["split_key", "engine", "trade_date", "sec_id"],
+    // The dbt project keeps this rule as a singular test in its own file.
+    // Dataform takes a row condition in the config, so the rule sits next
+    // to the column it is about. Both sides must stay above zero: a zero
+    // either breaks the division or silently zeroes every price before
+    // the split.
+    rowConditions: [
+      "split_before > 0 and split_after > 0"
+    ]
+  },
+  columns: {
+    split_key: "Surrogate key: trade_date and sec_id. One security can have more than one split, FXRU has two, so the date belongs to the key.",
+    engine: "Engine code taken from the Cloud Storage path, for example stock.",
+    trade_date: "Date of the split. It is the first trade day with the new price, so prices from this date are already on the new scale.",
+    sec_id: "Security ticker.",
+    split_before: "Number of securities before the split, the denominator of the correction factor.",
+    split_after: "Number of securities after the split, the numerator of the correction factor.",
+    extracted_at: "When the extract script wrote the file to Cloud Storage."
+  }
+}
+
+select
+	concat(cast(tradedate as string), '|', secid) split_key
+	, engine
+	, tradedate trade_date
+	, secid sec_id
+	, before split_before
+	, after split_after
+	, _extracted_at extracted_at
+from ${ref("moex_splits")}

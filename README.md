@@ -44,64 +44,71 @@ into the repository that holds the CI with access to Google Cloud.
 
 ## Status
 
-Step 1: the project settings, the three declarations and the first
-staging view. The rest of the port follows: the other two views, the
-incremental fact, the JavaScript functions, and the assertions that
-replace the singular tests of the dbt project.
+Step 2: the project settings, the three declarations and all three
+staging views with their assertions. The first view is proved equal to
+the one dbt builds: the same count and no rows in either direction of
+`EXCEPT DISTINCT`.
+
+The rest of the port follows: the incremental fact, the JavaScript
+functions that replace the dbt macros, and the type 2 dimension, which
+has no ready tool here because Dataform has no equivalent of a dbt
+snapshot.
 
 ## Setup, once per project
 
 The commands run on a machine with `gcloud` logged in as the project
-owner. `REPO_URL` is the HTTPS address of this repository and ends with
-`.git`.
+owner. The repository itself is made in the Google Cloud console: the
+`gcloud` command line has no Dataform surface.
 
 ```
 PROJECT=project-6feb8749-c55b-4db3-af0
 REGION=us-central1
 NUMBER=$(gcloud projects describe $PROJECT --format 'value(projectNumber)')
 AGENT=service-$NUMBER@gcp-sa-dataform.iam.gserviceaccount.com
+RUNNER=dataform-run@$PROJECT.iam.gserviceaccount.com
 
 # 1. The APIs of Dataform and of Secret Manager.
-gcloud services enable dataform.googleapis.com secretmanager.googleapis.com \
-  --project $PROJECT
+gcloud services enable dataform.googleapis.com secretmanager.googleapis.com   --project $PROJECT
 
-# 2. The service agent of Dataform, the account that runs every query of
-#    this repository. Enabling the API is not enough: the account is made
-#    on the first request for it, and a grant before that fails with
-#    "service account does not exist". This command makes it.
+# 2. The service agent of Dataform. Enabling the API is not enough: the
+#    account is made on the first request for it, and a grant before that
+#    fails with "service account does not exist".
 gcloud beta services identity create --service dataform.googleapis.com   --project $PROJECT
 
-# 3. Its rights: run jobs, write its own datasets, and read the raw
+# 3. The account that runs the queries. A repository cannot use the
+#    service agent itself, it needs an account of its own. This one may
+#    run jobs, write the datasets of this project, and read the raw
 #    layer, which is external tables over a bucket.
-gcloud projects add-iam-policy-binding $PROJECT \
-  --member serviceAccount:$AGENT --role roles/bigquery.jobUser
-gcloud projects add-iam-policy-binding $PROJECT \
-  --member serviceAccount:$AGENT --role roles/bigquery.dataEditor
-gcloud storage buckets add-iam-policy-binding gs://invest-dwh-raw \
-  --member serviceAccount:$AGENT --role roles/storage.objectViewer
+gcloud iam service-accounts create dataform-run --project $PROJECT   --display-name "Runs the Dataform workflow"
+gcloud projects add-iam-policy-binding $PROJECT   --member serviceAccount:$RUNNER --role roles/bigquery.jobUser
+gcloud projects add-iam-policy-binding $PROJECT   --member serviceAccount:$RUNNER --role roles/bigquery.dataEditor
+gcloud storage buckets add-iam-policy-binding gs://invest-dwh-raw   --member serviceAccount:$RUNNER --role roles/storage.objectViewer
 
-# 4. The token that Dataform uses to read this repository. Make a
+# 4. The service agent runs the workflow as that account, so it must be
+#    allowed to borrow it.
+gcloud iam service-accounts add-iam-policy-binding $RUNNER   --project $PROJECT --member serviceAccount:$AGENT   --role roles/iam.serviceAccountTokenCreator
+gcloud iam service-accounts add-iam-policy-binding $RUNNER   --project $PROJECT --member serviceAccount:$AGENT   --role roles/iam.serviceAccountUser
+
+# 5. The token that Dataform uses to read this repository. Make a
 #    fine-grained personal access token on GitHub for THIS repository
-#    only, with Contents read and write, and paste it into the command
-#    below. It is the only secret of the project, see the note at the end.
-printf '%s' 'PASTE_THE_TOKEN_HERE' | gcloud secrets create dataform-github-token \
-  --project $PROJECT --replication-policy automatic --data-file=-
-gcloud secrets add-iam-policy-binding dataform-github-token \
-  --project $PROJECT --member serviceAccount:$AGENT \
-  --role roles/secretmanager.secretAccessor
-
-# 5. The Dataform repository, linked to this one on GitHub.
-gcloud dataform repositories create invest-dwh \
-  --project $PROJECT --region $REGION \
-  --remote-url REPO_URL \
-  --default-branch main \
-  --secret-version projects/$PROJECT/secrets/dataform-github-token/versions/1
+#    only, with Contents read and write, and put it in a file with no
+#    newline at the end. It is the only secret of the project, see the
+#    note at the end.
+gcloud secrets create dataform-github-token   --project $PROJECT --replication-policy automatic --data-file token.txt
+gcloud secrets add-iam-policy-binding dataform-github-token   --project $PROJECT --member serviceAccount:$AGENT   --role roles/secretmanager.secretAccessor
 ```
 
-Then open Dataform in the Google Cloud console, create a development
-workspace in the repository `invest-dwh`, and pull from the remote
-branch. The workspace is the web editor; a commit and a push from it go
-straight to this repository on GitHub.
+Then, in the console, on the Dataform page:
+
+1. **Create repository**. Repository ID `invest-dwh`, the region above,
+   and `dataform-run` in the **Service account** field.
+2. In the repository, connect it to this one on GitHub: the remote URI
+   that ends with `.git`, the default branch `main`, and the secret
+   `dataform-github-token`.
+3. **Create development workspace**. Do not press **Initialize
+   workspace**: that is for an empty repository and it writes its own
+   settings file. This repository already has one, so pull the remote
+   branch instead.
 
 ## Check
 
