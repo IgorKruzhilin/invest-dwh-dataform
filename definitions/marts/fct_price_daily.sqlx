@@ -69,12 +69,15 @@ with hist as (
 		hist.trade_date
 		, hist.sec_id
 )
+-- The order of the columns follows the contract of the dbt model, so
+-- that the two tables can be compared with select *. dbt fixes the order
+-- in the yml file; here the SQL is the only place that sets it.
 select
 	concat(hist.exchange, '|', hist.sec_id, '|', cast(hist.trade_date as string)) price_key
 	, hist.exchange
-	, hist.trade_date
-	, hist.sec_id
 	, hist.board
+	, hist.sec_id
+	, hist.trade_date
 	, hist.currency
 	, hist.close_price
 	, coalesce(splits.split_cum_factor, 1) split_cum_factor
